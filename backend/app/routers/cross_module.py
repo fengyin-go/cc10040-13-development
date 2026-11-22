@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.schemas import MemberPayload, ReadComparePayload
 from app.services.metric_definition import MetricDefinitionService
 from app.services.caliber_version import CaliberVersionService
 from app.services.query_builder import QueryBuilderService
@@ -158,6 +159,63 @@ def export_drill_to_pivot(path_id: int):
     """将下钻路径导出为透视表配置建议"""
     svc = DrillDownService()
     return svc.export_to_pivot(path_id)
+
+
+# ── 下钻透视预览：成员版本快照、切片聚合与读数对照 ──
+
+@router.get("/drill-preview/parents")
+def drill_preview_parents():
+    """列出可下钻父级、当前成员范围与成员版本"""
+    svc = DrillDownService()
+    return svc.list_drill_parents()
+
+
+@router.post("/drill-preview/{parent}/read")
+def drill_preview_read(parent: str):
+    """下钻读取父级，固化一次不可变的成员快照"""
+    svc = DrillDownService()
+    return svc.read_drill_parent(parent)
+
+
+@router.post("/drill-preview/{parent}/members")
+def drill_preview_register_member(parent: str, payload: MemberPayload):
+    """向父级补录成员（门店或渠道），成员版本递增，历史快照不变"""
+    svc = DrillDownService()
+    return svc.register_member(
+        parent,
+        member_code=payload.member_code.strip(),
+        member_name=payload.member_name.strip(),
+        member_type=payload.member_type.strip(),
+        metrics=payload.metrics,
+    )
+
+
+@router.get("/drill-preview/{parent}/reads")
+def drill_preview_list_reads(parent: str):
+    """列出父级的全部历史读取及成员版本，供返回下钻后继续核对"""
+    svc = DrillDownService()
+    return svc.list_reads(parent)
+
+
+@router.get("/drill-preview/slice/{read_id}")
+def drill_preview_slice(read_id: int):
+    """根据某次下钻读取聚合生成透视切片数据"""
+    svc = DrillDownService()
+    return svc.build_pivot_slice(read_id)
+
+
+@router.get("/drill-preview/preview/{read_id}")
+def drill_preview_pivot(read_id: int):
+    """透视表配置按切片数据计算格值，展示来源成员和差额并做一致性校验"""
+    svc = DrillDownService()
+    return svc.preview_pivot(read_id)
+
+
+@router.post("/drill-preview/compare")
+def drill_preview_compare(payload: ReadComparePayload):
+    """对照同一父级的两次读取，辨明补录成员带来的读数差异"""
+    svc = DrillDownService()
+    return svc.compare_reads(payload.base_read_id, payload.target_read_id)
 
 
 @router.post("/pivot-table/{config_id}/compute")

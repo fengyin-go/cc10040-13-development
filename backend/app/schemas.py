@@ -29,3 +29,17 @@ class EntryPayload(BaseModel):
 class ActionPayload(BaseModel):
     action: str
     remark: str | None = None
+
+
+class MemberPayload(BaseModel):
+    """下钻父级补录成员的请求体；度量留空表示缺失，不会被当成 0。"""
+    member_code: str
+    member_name: str
+    member_type: str
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReadComparePayload(BaseModel):
+    """同一父级两次下钻读取的对照请求。"""
+    base_read_id: int
+    target_read_id: int

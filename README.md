@@ -79,5 +79,25 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 下钻透视预览
+
+下钻分析模块（`/drill_down`）在通用路径配置之外，提供「透视预览」工作台
+（`frontend/src/views/DrillPreviewView.vue`，后端 `DrillDownService`）：
+
+- **成员快照**：每次「下钻读取」把父级当前成员（门店/渠道）固化为不可变快照，
+  带成员版本序号 `member_version` 和版本指纹 `member_version_hash`。
+- **补录与版本**：补录成员只追加到成员主数据并使版本递增，历史快照保持不变；
+  度量留空表示缺失，聚合时跳过，绝不按零累计。
+- **透视切片与预览**：切片只统计该次读取快照内的成员，父级以外成员不会混入；
+  透视表配置按切片计算各格值，逐格给出来源成员、差额（正常为 0）和缺失成员，
+  并输出「各格与合计一致 / 成员范围隔离 / 缺失不计零 / 总计等于分组之和」校验。
+- **版本辨明与读数对照**：预览在父级补录后会标记 `stale` 并提示本次格值不含新成员；
+  返回下钻重新读取同一父级后，可对照两次读数，查看新增成员和各度量差额。
+
+接口前缀 `/api/cross/drill-preview`：`GET /parents`、`POST /{parent}/read`、
+`POST /{parent}/members`、`GET /{parent}/reads`、`GET /slice/{read_id}`、
+`GET /preview/{read_id}`、`POST /compare`。行为测试见
+`backend/tests/test_drill_preview.py`。
+
 领域：数据工程
 子方向：数据分析与数据应用

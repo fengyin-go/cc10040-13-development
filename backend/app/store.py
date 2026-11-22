@@ -28,6 +28,12 @@ class Store:
         self._anomaly_records: list[dict[str, Any]] = []
         # Recalc history
         self._recalc_history: list[dict[str, Any]] = []
+        # Drill-down member master (parent -> current members) and immutable read snapshots
+        self._drill_members: dict[str, list[dict[str, Any]]] = {}
+        self._drill_snapshots: dict[str, list[dict[str, Any]]] = {}
+        self._drill_version_seq: dict[str, int] = {}
+        self._drill_read_seq: int = 0
+        self.drill_seeded: bool = False
         # Lock for thread safety
         self._lock = threading.Lock()
 
@@ -243,6 +249,53 @@ class Store:
             "lineage": lineage,
             "depth": len(lineage),
         }
+
+    # ── Drill-down member master & read snapshots ──
+
+    def drill_parent_names(self) -> list[str]:
+        return sorted(self._drill_members)
+
+    def drill_members(self, parent: str) -> list[dict[str, Any]] | None:
+        if parent not in self._drill_members:
+            return None
+        return [dict(member) for member in self._drill_members[parent]]
+
+    def drill_upsert_members(self, parent: str, members: list[dict[str, Any]]) -> None:
+        """整体写入父级当前成员主数据（仅用于种子初始化和补录追加）。"""
+        self._drill_members[parent] = [dict(member) for member in members]
+        self._drill_version_seq.setdefault(parent, 0)
+
+    def drill_append_member(self, parent: str, member: dict[str, Any]) -> dict[str, Any]:
+        """向父级补录一个新成员，成员版本序号递增，已存在的成员编号不变。"""
+        members = self._drill_members.setdefault(parent, [])
+        seq = self._drill_version_seq.get(parent, 0) + 1
+        stored = dict(member)
+        stored.setdefault("member_no", seq)
+        members.append(stored)
+        self._drill_version_seq[parent] = seq
+        return dict(stored)
+
+    def drill_version_seq(self, parent: str) -> int:
+        return self._drill_version_seq.get(parent, 0)
+
+    def drill_save_snapshot(self, parent: str, snapshot: dict[str, Any]) -> dict[str, Any]:
+        """保存一次下钻读取的不可变快照。"""
+        self._drill_snapshots.setdefault(parent, []).append(snapshot)
+        return dict(snapshot)
+
+    def drill_find_snapshot(self, read_id: int) -> dict[str, Any] | None:
+        for snapshots in self._drill_snapshots.values():
+            for snapshot in snapshots:
+                if int(snapshot.get("read_id", -1)) == read_id:
+                    return dict(snapshot)
+        return None
+
+    def drill_list_snapshots(self, parent: str) -> list[dict[str, Any]]:
+        return [dict(snapshot) for snapshot in self._drill_snapshots.get(parent, [])]
+
+    def drill_next_read_id(self) -> int:
+        self._drill_read_seq += 1
+        return self._drill_read_seq
 
 
 store = Store()
